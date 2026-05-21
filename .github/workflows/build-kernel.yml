@@ -24,18 +24,18 @@ jobs:
             zip curl git ccache \
             lz4 binutils-aarch64-linux-gnu \
             gcc-aarch64-linux-gnu \
-            clang lld llvm
+            clang-11 lld-11 llvm-11
+
+      - name: Set Clang 11 as default
+        run: |
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-11 100
+          sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/lld-11 100
+          clang --version
 
       - name: Fix script permissions
         run: |
           find scripts -name "*.sh" -exec chmod +x {} \;
           find scripts -name "*.py" -exec chmod +x {} \;
-          chmod +x tools/dtc 2>/dev/null || true
-
-      - name: Verify toolchain
-        run: |
-          clang --version
-          aarch64-linux-gnu-gcc --version
 
       - name: Set build variables
         run: |
