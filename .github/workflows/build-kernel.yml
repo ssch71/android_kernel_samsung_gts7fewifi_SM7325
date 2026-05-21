@@ -24,21 +24,23 @@ jobs:
             zip curl git ccache \
             lz4 binutils-aarch64-linux-gnu \
             gcc-aarch64-linux-gnu \
-            clang-11 lld-11 llvm-11 \
-            device-tree-compiler
+            clang-11 lld-11 llvm-11
 
-      - name: Set Clang 11 as default
+      - name: Set Clang 11 as default + create LLVM symlinks
         run: |
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-11 100
           sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/lld-11 100
+          # LLVM 툴 symlink 생성 (suffix 없는 이름으로)
+          for tool in ar nm objcopy objdump readelf size strip; do
+            sudo ln -sf /usr/bin/llvm-${tool}-11 /usr/bin/llvm-${tool} 2>/dev/null || true
+          done
           clang --version
-          dtc --version
+          llvm-ar --version
 
       - name: Fix script permissions
         run: |
           find scripts -name "*.sh" -exec chmod +x {} \;
           find scripts -name "*.py" -exec chmod +x {} \;
-          chmod +x tools/dtc 2>/dev/null || true
 
       - name: Set build variables
         run: |
@@ -57,6 +59,7 @@ jobs:
             LD=ld.lld \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            DTC_EXT=$(pwd)/tools/dtc \
             CONFIG_BUILD_ARM64_DT_OVERLAY=y \
             vendor/gts7fewifi_eur_open_defconfig
 
@@ -70,6 +73,7 @@ jobs:
             LD=ld.lld \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            DTC_EXT=$(pwd)/tools/dtc \
             CONFIG_BUILD_ARM64_DT_OVERLAY=y \
             -j$(nproc --all) 2>&1 | tee build.log
 
@@ -77,7 +81,7 @@ jobs:
         run: |
           if [ ! -f out/arch/arm64/boot/Image ]; then
             echo "❌ 빌드 실패 - Image 파일 없음"
-            tail -100 build.log
+            grep -i "error:\|\*\*\*\|not found" build.log | grep -v "HDRINST" | tail -30
             exit 1
           fi
           echo "✅ 빌드 성공"
