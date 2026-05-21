@@ -27,34 +27,26 @@ jobs:
             clang-11 lld-11 llvm-11 \
             device-tree-compiler
 
-      - name: Set Clang 11 as default + fix all LLVM symlinks
+      - name: Verify clang-11 path
         run: |
-          # clang/lld
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-11 100
-          sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/lld-11 100
-          # 모든 llvm 툴을 -11 버전으로 강제 symlink
-          for tool in ar nm objcopy objdump readelf size strip dis; do
-            if [ -f /usr/bin/llvm-${tool}-11 ]; then
-              sudo ln -sf /usr/bin/llvm-${tool}-11 /usr/bin/llvm-${tool}
-            fi
-          done
-          # 확인
-          echo "clang: $(clang --version | head -1)"
-          echo "llvm-nm: $(llvm-nm --version | head -1)"
-          echo "llvm-ar: $(llvm-ar --version | head -1)"
+          echo "clang-11 path: $(which clang-11)"
+          clang-11 --version
+          echo "lld-11 path: $(which lld-11)"
+          echo "llvm-nm-11: $(which llvm-nm-11)"
 
       - name: Fix all file permissions
         run: |
-          # scripts 전체
           find scripts -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} \;
-          # arch 내 스크립트
           find arch -type f -name "*.sh" -exec chmod +x {} \;
-          # tools 전체 바이너리
-          find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" ! -name "Makefile" -exec chmod +x {} \;
+          find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
+            ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
 
       - name: Set build variables
         run: |
           echo "BUILD_TIME=$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
+          # clang-11 절대경로
+          CLANG11=$(dirname $(which clang-11))
+          echo "CLANG11_PATH=$CLANG11" >> $GITHUB_ENV
 
       - name: Make output directory
         run: mkdir -p out
@@ -63,15 +55,14 @@ jobs:
         run: |
           make -C $(pwd) O=$(pwd)/out \
             ARCH=arm64 \
-            LLVM=1 \
+            CC=clang-11 \
+            LD=ld.lld-11 \
+            AR=llvm-ar-11 \
+            NM=llvm-nm-11 \
+            OBJCOPY=llvm-objcopy-11 \
+            OBJDUMP=llvm-objdump-11 \
+            STRIP=llvm-strip-11 \
             LLVM_IAS=1 \
-            CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             DTC_EXT=$(pwd)/tools/dtc \
@@ -82,15 +73,14 @@ jobs:
         run: |
           make -C $(pwd) O=$(pwd)/out \
             ARCH=arm64 \
-            LLVM=1 \
+            CC=clang-11 \
+            LD=ld.lld-11 \
+            AR=llvm-ar-11 \
+            NM=llvm-nm-11 \
+            OBJCOPY=llvm-objcopy-11 \
+            OBJDUMP=llvm-objdump-11 \
+            STRIP=llvm-strip-11 \
             LLVM_IAS=1 \
-            CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             DTC_EXT=$(pwd)/tools/dtc \
@@ -102,7 +92,7 @@ jobs:
           if [ ! -f out/arch/arm64/boot/Image ]; then
             echo "❌ 빌드 실패 - Image 파일 없음"
             grep -i "error:\|Permission denied\|not found\|\*\*\* \[" build.log \
-              | grep -v "HDRINST\|can/error" | tail -30
+              | grep -v "HDRINST\|can/error" | sort -u | tail -30
             exit 1
           fi
           echo "✅ 빌드 성공"
