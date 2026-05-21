@@ -26,11 +26,16 @@ jobs:
             gcc-aarch64-linux-gnu \
             clang lld llvm
 
+      - name: Fix script permissions
+        run: |
+          find scripts -name "*.sh" -exec chmod +x {} \;
+          find scripts -name "*.py" -exec chmod +x {} \;
+          chmod +x tools/dtc 2>/dev/null || true
+
       - name: Verify toolchain
         run: |
           clang --version
           aarch64-linux-gnu-gcc --version
-          ld.lld --version
 
       - name: Set build variables
         run: |
