@@ -1,0 +1,118 @@
+name: Build SM-T733 Kernel
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison flex libssl-dev libelf-dev \
+            python3 python2 make gcc \
+            zip curl git ccache \
+            lz4 binutils-aarch64-linux-gnu \
+            gcc-aarch64-linux-gnu
+
+      - name: Setup Clang toolchain
+        run: |
+          mkdir -p $HOME/toolchain/clang
+          cd $HOME/toolchain/clang
+          wget -q https://github.com/ZyCromerZ/Clang/releases/download/14.0.6-20220622-release/Clang-14.0.6-20220622.tar.gz -O clang.tar.gz
+          tar -xf clang.tar.gz
+          rm clang.tar.gz
+          echo "$HOME/toolchain/clang/bin" >> $GITHUB_PATH
+          echo "CLANG_PATH=$HOME/toolchain/clang/bin" >> $GITHUB_ENV
+
+      - name: Verify toolchain
+        run: |
+          clang --version
+          aarch64-linux-gnu-gcc --version
+
+      - name: Set build variables
+        run: |
+          echo "ARCH=arm64" >> $GITHUB_ENV
+          echo "SUBARCH=arm64" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
+
+      - name: Make output directory
+        run: mkdir -p out
+
+      - name: Build defconfig
+        run: |
+          make -C $(pwd) O=$(pwd)/out \
+            ARCH=arm64 \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            DTC_EXT=$(pwd)/tools/dtc \
+            CONFIG_BUILD_ARM64_DT_OVERLAY=y \
+            vendor/gts7fewifi_eur_open_defconfig
+
+      - name: Build kernel
+        run: |
+          make -C $(pwd) O=$(pwd)/out \
+            ARCH=arm64 \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            DTC_EXT=$(pwd)/tools/dtc \
+            CONFIG_BUILD_ARM64_DT_OVERLAY=y \
+            -j$(nproc --all) 2>&1 | tee build.log
+
+      - name: Check build output
+        run: |
+          if [ ! -f out/arch/arm64/boot/Image ]; then
+            echo "❌ 빌드 실패 - Image 파일 없음"
+            tail -100 build.log
+            exit 1
+          fi
+          echo "✅ 빌드 성공"
+          ls -lh out/arch/arm64/boot/
+
+      - name: Clone AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/ssch71/AnyKernel3 AnyKernel3
+
+      - name: Package kernel zip
+        run: |
+          cp out/arch/arm64/boot/Image AnyKernel3/
+          if [ -f out/arch/arm64/boot/dtb.img ]; then
+            cp out/arch/arm64/boot/dtb.img AnyKernel3/
+          fi
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img AnyKernel3/
+          fi
+          cd AnyKernel3
+          zip -r9 ../SM-T733_Kernel_${{ env.BUILD_TIME }}.zip * \
+            -x "*.git*" -x "README.md" -x "LICENSE"
+
+      - name: Upload kernel zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: SM-T733_Kernel_${{ env.BUILD_TIME }}
+          path: SM-T733_Kernel_*.zip
+          retention-days: 7
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 3
