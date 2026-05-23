@@ -35,18 +35,17 @@ jobs:
           find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
             ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
 
-      - name: Fix sec_debug_summary section mismatch
+      - name: Fix section mismatches in samsung debug files
         run: |
-          # __init annotation 제거 - non-init 함수에서 호출되므로
-          sed -i 's/static void __init summary_init_/static void summary_init_/g' \
-            drivers/samsung/debug/sec_debug_summary.c
-          sed -i 's/static int __init summary_init_/static int summary_init_/g' \
-            drivers/samsung/debug/sec_debug_summary.c
-          sed -i 's/static void __init sec_debug_summary_/static void sec_debug_summary_/g' \
-            drivers/samsung/debug/sec_debug_summary.c
-          sed -i 's/static int __init sec_debug_summary_/static int sec_debug_summary_/g' \
-            drivers/samsung/debug/sec_debug_summary.c
-          echo "sec_debug_summary.c patched"
+          # sec_debug_summary.c 전체에서 __init 제거
+          sed -i 's/__init //g' drivers/samsung/debug/sec_debug_summary.c
+          sed -i 's/ __init / /g' drivers/samsung/debug/sec_debug_summary.c
+          # 다른 samsung debug 파일들도 동일하게 처리
+          for f in drivers/samsung/debug/*.c; do
+            sed -i 's/__init //g' "$f"
+            sed -i 's/ __init / /g' "$f"
+          done
+          echo "Samsung debug files patched"
 
       - name: Stub missing netfilter source files
         run: |
