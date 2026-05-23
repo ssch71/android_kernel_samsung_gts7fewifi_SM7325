@@ -75,7 +75,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             DTC_EXT=$(pwd)/tools/dtc \
             CONFIG_BUILD_ARM64_DT_OVERLAY=y \
-            KCFLAGS="-Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-incomplete-setjmp-declaration" \
+            KCFLAGS="-Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-unused-function" \
             -j$(nproc --all) 2>&1 | tee build.log
 
       - name: Check build output
