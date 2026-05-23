@@ -62,9 +62,14 @@ jobs:
 
       - name: Disable missing netfilter modules
         run: |
-          chmod +x scripts/config
+          # netfilter xt_* 모듈 전체 비활성화 (삼성 오픈소스 누락)
+          grep "^CONFIG_NETFILTER_XT" out/.config | \
+            sed 's/=.*//' | \
+            xargs -I{} ./scripts/config --file out/.config --disable {}
+          # 추가로 알려진 누락 모듈
           ./scripts/config --file out/.config \
             --disable CONFIG_NETFILTER_XT_TARGET_DSCP \
+            --disable CONFIG_NETFILTER_XT_TARGET_TCPMSS \
             --disable CONFIG_NETFILTER_XT_TARGET_CONNMARK \
             --disable CONFIG_NETFILTER_XT_MATCH_CONNMARK \
             --disable CONFIG_NETFILTER_XT_MATCH_MARK \
@@ -95,7 +100,7 @@ jobs:
         run: |
           if [ ! -f out/arch/arm64/boot/Image ]; then
             echo "❌ 빌드 실패 - Image 파일 없음"
-            grep "\*\*\*\|error:" build.log \
+            grep "No rule\|fatal error\|error:" build.log \
               | grep -v "HDRINST\|can/error" | sort -u | tail -30
             exit 1
           fi
