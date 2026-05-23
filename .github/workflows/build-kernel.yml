@@ -30,6 +30,7 @@ jobs:
       - name: Fix all file permissions
         run: |
           find scripts -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} \;
+          chmod +x scripts/config
           find arch -type f -name "*.sh" -exec chmod +x {} \;
           find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
             ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
@@ -61,14 +62,13 @@ jobs:
 
       - name: Disable missing netfilter modules
         run: |
-          # 삼성 오픈소스에서 누락된 netfilter 소스 파일들 비활성화
+          chmod +x scripts/config
           ./scripts/config --file out/.config \
             --disable CONFIG_NETFILTER_XT_TARGET_DSCP \
             --disable CONFIG_NETFILTER_XT_TARGET_CONNMARK \
             --disable CONFIG_NETFILTER_XT_MATCH_CONNMARK \
             --disable CONFIG_NETFILTER_XT_MATCH_MARK \
             --disable CONFIG_NETFILTER_XT_TARGET_MARK
-          # olddefconfig로 의존성 재정리
           make -C $(pwd) O=$(pwd)/out \
             ARCH=arm64 CC=clang-11 olddefconfig
 
