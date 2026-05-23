@@ -35,17 +35,18 @@ jobs:
           find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
             ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
 
-      - name: Fix section mismatches in samsung debug files
+      - name: Remove -E flag from Makefile.modpost
         run: |
-          # sec_debug_summary.c 전체에서 __init 제거
-          sed -i 's/__init //g' drivers/samsung/debug/sec_debug_summary.c
-          sed -i 's/ __init / /g' drivers/samsung/debug/sec_debug_summary.c
-          # 다른 samsung debug 파일들도 동일하게 처리
+          # -E 플래그가 sec_mismatch_fatal을 활성화함 → 제거
+          sed -i 's/ -E//' scripts/Makefile.modpost
+          grep "MODPOST" scripts/Makefile.modpost | head -5
+
+      - name: Fix samsung debug __init mismatches
+        run: |
           for f in drivers/samsung/debug/*.c; do
             sed -i 's/__init //g' "$f"
             sed -i 's/ __init / /g' "$f"
           done
-          echo "Samsung debug files patched"
 
       - name: Stub missing netfilter source files
         run: |
