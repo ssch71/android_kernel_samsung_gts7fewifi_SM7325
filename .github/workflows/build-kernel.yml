@@ -34,25 +34,6 @@ jobs:
           find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
             ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
 
-      - name: Fix clang-11 incompatible errors
-        run: |
-          # 1. xt_mark.c - include 누락으로 인한 incomplete type
-          # xt_tables.h include 추가
-          sed -i '/#include <linux\/netfilter\/x_tables.h>/a #include <linux\/netfilter\/xt_mark.h>' \
-            net/netfilter/xt_mark.c || true
-
-          # 2. lahaina.c - register_tas25xx_bigdata_cb 선언 누락
-          # Werror=implicit-function-declaration 만 해당 파일에서 비활성화
-          sed -i 's/^ccflags-y\s*:=/ccflags-y += -Wno-implicit-function-declaration\nccflags-y :=/' \
-            techpack/audio/asoc/Makefile || true
-          # Makefile 없으면 직접 추가
-          echo 'CFLAGS_lahaina.o += -Wno-implicit-function-declaration' >> \
-            techpack/audio/asoc/Makefile
-
-          # 3. cam_sysfs_init.c - old-style function definition
-          echo 'CFLAGS_cam_sysfs_init.o += -Wno-strict-prototypes' >> \
-            techpack/camera/drivers/cam_sensor_module/cam_sensor_utils/Makefile
-
       - name: Set build variables
         run: |
           echo "BUILD_TIME=$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
@@ -94,6 +75,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             DTC_EXT=$(pwd)/tools/dtc \
             CONFIG_BUILD_ARM64_DT_OVERLAY=y \
+            KCFLAGS="-Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-incomplete-setjmp-declaration" \
             -j$(nproc --all) 2>&1 | tee build.log
 
       - name: Check build output
