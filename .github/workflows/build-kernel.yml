@@ -35,6 +35,22 @@ jobs:
           find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
             ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
 
+      - name: Stub missing netfilter source files
+        run: |
+          # 누락된 xt_*.c 파일들을 빈 stub으로 생성
+          MISSING_XT="xt_DSCP xt_hl xt_TCPMSS xt_ecn xt_connmark xt_mark \
+            xt_MARK xt_conntrack xt_state xt_statistic xt_string \
+            xt_tcpudp xt_iprange xt_multiport xt_limit xt_recent \
+            xt_owner xt_physdev xt_pkttype xt_quota xt_rateest \
+            xt_realm xt_sctp xt_socket xt_time xt_u32 xt_nat \
+            xt_CONNMARK xt_CT xt_LOG xt_NFLOG xt_NFQUEUE \
+            xt_REDIRECT xt_MASQUERADE xt_NETMAP xt_TRACE"
+          for xt in $MISSING_XT; do
+            if [ ! -f net/netfilter/${xt}.c ]; then
+              echo "/* stub */" > net/netfilter/${xt}.c
+            fi
+          done
+
       - name: Set build variables
         run: |
           echo "BUILD_TIME=$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
@@ -62,18 +78,9 @@ jobs:
 
       - name: Disable missing netfilter modules
         run: |
-          # netfilter xt_* 모듈 전체 비활성화 (삼성 오픈소스 누락)
           grep "^CONFIG_NETFILTER_XT" out/.config | \
             sed 's/=.*//' | \
             xargs -I{} ./scripts/config --file out/.config --disable {}
-          # 추가로 알려진 누락 모듈
-          ./scripts/config --file out/.config \
-            --disable CONFIG_NETFILTER_XT_TARGET_DSCP \
-            --disable CONFIG_NETFILTER_XT_TARGET_TCPMSS \
-            --disable CONFIG_NETFILTER_XT_TARGET_CONNMARK \
-            --disable CONFIG_NETFILTER_XT_MATCH_CONNMARK \
-            --disable CONFIG_NETFILTER_XT_MATCH_MARK \
-            --disable CONFIG_NETFILTER_XT_TARGET_MARK
           make -C $(pwd) O=$(pwd)/out \
             ARCH=arm64 CC=clang-11 olddefconfig
 
