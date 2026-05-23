@@ -59,6 +59,19 @@ jobs:
             CONFIG_BUILD_ARM64_DT_OVERLAY=y \
             vendor/gts7fewifi_eur_open_defconfig
 
+      - name: Disable missing netfilter modules
+        run: |
+          # 삼성 오픈소스에서 누락된 netfilter 소스 파일들 비활성화
+          ./scripts/config --file out/.config \
+            --disable CONFIG_NETFILTER_XT_TARGET_DSCP \
+            --disable CONFIG_NETFILTER_XT_TARGET_CONNMARK \
+            --disable CONFIG_NETFILTER_XT_MATCH_CONNMARK \
+            --disable CONFIG_NETFILTER_XT_MATCH_MARK \
+            --disable CONFIG_NETFILTER_XT_TARGET_MARK
+          # olddefconfig로 의존성 재정리
+          make -C $(pwd) O=$(pwd)/out \
+            ARCH=arm64 CC=clang-11 olddefconfig
+
       - name: Build kernel
         run: |
           make -C $(pwd) O=$(pwd)/out \
@@ -82,7 +95,7 @@ jobs:
         run: |
           if [ ! -f out/arch/arm64/boot/Image ]; then
             echo "❌ 빌드 실패 - Image 파일 없음"
-            grep "error:" build.log \
+            grep "\*\*\*\|error:" build.log \
               | grep -v "HDRINST\|can/error" | sort -u | tail -30
             exit 1
           fi
