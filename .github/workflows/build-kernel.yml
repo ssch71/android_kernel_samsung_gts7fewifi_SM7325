@@ -38,42 +38,21 @@ jobs:
       - name: Setup KernelSU-Next
         run: |
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          echo "✅ KernelSU-Next next 패치 완료"
+          echo "KernelSU-Next next patched"
           ls drivers/kernelsu/ || true
 
       - name: Patch KernelSU-Next for Linux 5.4
         run: |
-          # pgtable.h 경로 패치
-          grep -rl "linux/pgtable.h" drivers/kernelsu/ 2>/dev/null | while read f; do
-            sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' "$f"
-          done
+          grep -rl "linux/pgtable.h" drivers/kernelsu/ 2>/dev/null | xargs -I{} sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' {}
+          printf '// disabled for 5.4\n#include <linux/kernel.h>\nvoid ksu_enable_seccomp_cache(void) {}\nvoid ksu_disable_seccomp_cache(void) {}\n' > drivers/kernelsu/infra/seccomp_cache.c
+          echo "Patch done"
+          cat drivers/kernelsu/infra/seccomp_cache.c
 
-          # seccomp_cache 관련 파일 전체 검색 후 Makefile에서 제거
-          find drivers/kernelsu -name "Makefile" | xargs grep -l "seccomp" 2>/dev/null | while read f; do
-            echo "Removing seccomp from: $f"
-            sed -i '/seccomp/d' "$f"
-          done
-
-          # 혹시 남아있으면 stub
-          find drivers/kernelsu -name "seccomp*.c" | while read f; do
-            echo "/* disabled */" > "$f"
-          done
-
-          echo "✅ 5.4 호환 패치 완료"
-          find drivers/kernelsu -name "Makefile" | xargs grep "seccomp" 2>/dev/null || echo "seccomp 제거 확인됨"
-
-          # seccomp_cache.c - Makefile에서 제거
-          if [ -f drivers/kernelsu/infra/Makefile ]; then
-            sed -i '/seccomp_cache/d' drivers/kernelsu/infra/Makefile
-            echo "✅ seccomp_cache Makefile에서 제거"
-          fi
-          # 루트 kernelsu Makefile에서도 제거
-          sed -i '/seccomp_cache/d' drivers/kernelsu/Makefile 2>/dev/null || true
-
-          # SECCOMP_ARCH_NATIVE_NR 관련 파일 전체 stub
-          find drivers/kernelsu -name "*.c" | xargs grep -l "SECCOMP_ARCH_NATIVE_NR" 2>/dev/null | while read f; do
-            echo "Stubbing: $f"
-            echo "/* disabled for 5.4 */" > "$f"
+      - name: Fix samsung debug __init mismatches
+        run: |
+          for f in drivers/samsung/debug/*.c; do
+            sed -i 's/__init //g' "$f"
+            sed -i 's/ __init / /g' "$f"
           done
 
       - name: Stub missing netfilter source files
@@ -153,12 +132,12 @@ jobs:
       - name: Check build output
         run: |
           if [ ! -f out/arch/arm64/boot/Image ]; then
-            echo "❌ 빌드 실패"
+            echo "Build failed"
             grep "error:\|FATAL\|No rule" build.log \
               | grep -v "HDRINST\|can/error" | sort -u | tail -30
             exit 1
           fi
-          echo "✅ 빌드 성공"
+          echo "Build success"
           ls -lh out/arch/arm64/boot/
 
       - name: Extract stock DTB from boot.img
@@ -173,8 +152,8 @@ jobs:
           cd stock_boot
           ../magiskboot unpack boot.img
           if [ -f dtb ]; then
-            echo "✅ 순정 DTB 추출 성공"
             cp dtb ../stock_dtb
+            echo "Stock DTB extracted"
           fi
 
       - name: Clone AnyKernel3
@@ -186,7 +165,6 @@ jobs:
           cp out/arch/arm64/boot/Image AnyKernel3/
           if [ -f stock_dtb ]; then
             cp stock_dtb AnyKernel3/dtb
-            echo "✅ 순정 DTB 포함"
           elif [ -f out/arch/arm64/boot/dtb.img ]; then
             cp out/arch/arm64/boot/dtb.img AnyKernel3/
           fi
