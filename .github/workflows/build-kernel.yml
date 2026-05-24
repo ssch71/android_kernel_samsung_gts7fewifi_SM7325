@@ -13,7 +13,7 @@ jobs:
       - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -39,7 +39,11 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           echo "✅ KernelSU-Next 패치 완료"
-          ls drivers/kernelsu/ || ls KernelSU/ || true
+          ls drivers/kernelsu/ || true
+          find drivers/kernelsu -name "*.c" -o -name "*.h" | \
+            xargs grep -l "linux/pgtable.h" 2>/dev/null | \
+            xargs sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' 2>/dev/null || true
+          echo "✅ pgtable.h 경로 패치 완료"
 
       - name: Fix samsung debug __init mismatches
         run: |
@@ -90,17 +94,13 @@ jobs:
 
       - name: Apply config patches
         run: |
-          # SELinux permissive - hal_audio 크래시 방지
           ./scripts/config --file out/.config \
             --enable CONFIG_SECURITY_SELINUX_BOOTPARAM \
-            --set-val CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE 0
-          # KernelSU 관련 설정
-          ./scripts/config --file out/.config \
+            --set-val CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE 0 \
             --enable CONFIG_KSU \
             --enable CONFIG_KPROBES \
             --enable CONFIG_HAVE_KPROBES \
             --enable CONFIG_KPROBE_EVENTS
-          # netfilter XT 모듈 비활성화 (소스 누락)
           grep "^CONFIG_NETFILTER_XT" out/.config | \
             sed 's/=.*//' | \
             xargs -I{} ./scripts/config --file out/.config --disable {}
