@@ -35,12 +35,6 @@ jobs:
           find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
             ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
 
-      - name: Remove -E flag from Makefile.modpost
-        run: |
-          # -E 플래그가 sec_mismatch_fatal을 활성화함 → 제거
-          sed -i 's/ -E//' scripts/Makefile.modpost
-          grep "MODPOST" scripts/Makefile.modpost | head -5
-
       - name: Fix samsung debug __init mismatches
         run: |
           for f in drivers/samsung/debug/*.c; do
@@ -126,6 +120,32 @@ jobs:
           echo "✅ 빌드 성공"
           ls -lh out/arch/arm64/boot/
 
+      - name: Extract stock DTB from boot.img and replace
+        run: |
+          # magiskboot 설치
+          wget -q https://github.com/topjohnwu/Magisk/releases/download/v30.0/Magisk-v30.0.apk \
+            -O magisk.zip
+          unzip -q magisk.zip lib/x86_64/libmagiskboot.so -d magisk_tmp
+          cp magisk_tmp/lib/x86_64/libmagiskboot.so magiskboot
+          chmod +x magiskboot
+
+          # 순정 boot.img 언팩
+          mkdir stock_boot
+          cp boot.img stock_boot/
+          cd stock_boot
+          ../magiskboot unpack boot.img
+          ls -la
+
+          # DTB 추출 확인
+          if [ -f dtb ]; then
+            echo "✅ 순정 DTB 추출 성공"
+            ls -lh dtb
+            cp dtb ../out/arch/arm64/boot/dtb
+          else
+            echo "⚠️ DTB 없음 - kernel dtbs에서 찾기"
+            find ../out/arch/arm64/boot/dts -name "*.dtb" | head -5
+          fi
+
       - name: Clone AnyKernel3
         run: |
           git clone --depth=1 https://github.com/ssch71/AnyKernel3 AnyKernel3
@@ -133,7 +153,11 @@ jobs:
       - name: Package kernel zip
         run: |
           cp out/arch/arm64/boot/Image AnyKernel3/
-          if [ -f out/arch/arm64/boot/dtb.img ]; then
+          # 순정 DTB 복사
+          if [ -f stock_boot/dtb ]; then
+            cp stock_boot/dtb AnyKernel3/dtb
+            echo "✅ 순정 DTB 포함"
+          elif [ -f out/arch/arm64/boot/dtb.img ]; then
             cp out/arch/arm64/boot/dtb.img AnyKernel3/
           fi
           if [ -f out/arch/arm64/boot/dtbo.img ]; then
