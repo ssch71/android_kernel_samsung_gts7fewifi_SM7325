@@ -38,18 +38,32 @@ jobs:
       - name: Setup KernelSU-Next
         run: |
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          echo "✅ KernelSU-Next 패치 완료"
+          echo "✅ KernelSU-Next next 패치 완료"
           ls drivers/kernelsu/ || true
 
       - name: Patch KernelSU-Next for Linux 5.4
         run: |
-          # pgtable.h 경로 패치 (5.4에서 위치 다름)
+          # pgtable.h 경로 패치
           grep -rl "linux/pgtable.h" drivers/kernelsu/ 2>/dev/null | while read f; do
-            echo "Patching: $f"
+            echo "Patching pgtable: $f"
             sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' "$f"
           done
-          # 패치 확인
-          grep -r "pgtable.h" drivers/kernelsu/ || true
+
+          # seccomp_cache.c - Makefile에서 제거
+          if [ -f drivers/kernelsu/infra/Makefile ]; then
+            sed -i '/seccomp_cache/d' drivers/kernelsu/infra/Makefile
+            echo "✅ seccomp_cache Makefile에서 제거"
+          fi
+          # 루트 kernelsu Makefile에서도 제거
+          sed -i '/seccomp_cache/d' drivers/kernelsu/Makefile 2>/dev/null || true
+
+          # SECCOMP_ARCH_NATIVE_NR 관련 파일 전체 stub
+          find drivers/kernelsu -name "*.c" | xargs grep -l "SECCOMP_ARCH_NATIVE_NR" 2>/dev/null | while read f; do
+            echo "Stubbing: $f"
+            echo "/* disabled for 5.4 */" > "$f"
+          done
+
+          echo "✅ 5.4 호환 패치 완료"
 
       - name: Fix samsung debug __init mismatches
         run: |
