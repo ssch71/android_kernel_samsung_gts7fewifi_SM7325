@@ -1,4 +1,4 @@
-name: Build SM-T733 Kernel
+name: Build SM-T733 Kernel with KernelSU-Next
 
 on:
   push:
@@ -34,6 +34,12 @@ jobs:
           find arch -type f -name "*.sh" -exec chmod +x {} \;
           find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
             ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
+
+      - name: Setup KernelSU-Next
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          echo "✅ KernelSU-Next 패치 완료"
+          ls drivers/kernelsu/ || ls KernelSU/ || true
 
       - name: Fix samsung debug __init mismatches
         run: |
@@ -82,8 +88,19 @@ jobs:
             CONFIG_BUILD_ARM64_DT_OVERLAY=y \
             vendor/gts7fewifi_eur_open_defconfig
 
-      - name: Disable missing netfilter modules
+      - name: Apply config patches
         run: |
+          # SELinux permissive - hal_audio 크래시 방지
+          ./scripts/config --file out/.config \
+            --enable CONFIG_SECURITY_SELINUX_BOOTPARAM \
+            --set-val CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE 0
+          # KernelSU 관련 설정
+          ./scripts/config --file out/.config \
+            --enable CONFIG_KSU \
+            --enable CONFIG_KPROBES \
+            --enable CONFIG_HAVE_KPROBES \
+            --enable CONFIG_KPROBE_EVENTS
+          # netfilter XT 모듈 비활성화 (소스 누락)
           grep "^CONFIG_NETFILTER_XT" out/.config | \
             sed 's/=.*//' | \
             xargs -I{} ./scripts/config --file out/.config --disable {}
@@ -112,38 +129,28 @@ jobs:
       - name: Check build output
         run: |
           if [ ! -f out/arch/arm64/boot/Image ]; then
-            echo "❌ 빌드 실패 - Image 파일 없음"
-            grep "No rule\|fatal error\|error:\|FATAL" build.log \
+            echo "❌ 빌드 실패"
+            grep "error:\|FATAL\|No rule" build.log \
               | grep -v "HDRINST\|can/error" | sort -u | tail -30
             exit 1
           fi
           echo "✅ 빌드 성공"
           ls -lh out/arch/arm64/boot/
 
-      - name: Extract stock DTB from boot.img and replace
+      - name: Extract stock DTB from boot.img
         run: |
-          # magiskboot 설치
           wget -q https://github.com/topjohnwu/Magisk/releases/download/v30.0/Magisk-v30.0.apk \
             -O magisk.zip
           unzip -q magisk.zip lib/x86_64/libmagiskboot.so -d magisk_tmp
           cp magisk_tmp/lib/x86_64/libmagiskboot.so magiskboot
           chmod +x magiskboot
-
-          # 순정 boot.img 언팩
           mkdir stock_boot
           cp boot.img stock_boot/
           cd stock_boot
           ../magiskboot unpack boot.img
-          ls -la
-
-          # DTB 추출 확인
           if [ -f dtb ]; then
             echo "✅ 순정 DTB 추출 성공"
-            ls -lh dtb
-            cp dtb ../out/arch/arm64/boot/dtb
-          else
-            echo "⚠️ DTB 없음 - kernel dtbs에서 찾기"
-            find ../out/arch/arm64/boot/dts -name "*.dtb" | head -5
+            cp dtb ../stock_dtb
           fi
 
       - name: Clone AnyKernel3
@@ -153,9 +160,8 @@ jobs:
       - name: Package kernel zip
         run: |
           cp out/arch/arm64/boot/Image AnyKernel3/
-          # 순정 DTB 복사
-          if [ -f stock_boot/dtb ]; then
-            cp stock_boot/dtb AnyKernel3/dtb
+          if [ -f stock_dtb ]; then
+            cp stock_dtb AnyKernel3/dtb
             echo "✅ 순정 DTB 포함"
           elif [ -f out/arch/arm64/boot/dtb.img ]; then
             cp out/arch/arm64/boot/dtb.img AnyKernel3/
@@ -164,14 +170,14 @@ jobs:
             cp out/arch/arm64/boot/dtbo.img AnyKernel3/
           fi
           cd AnyKernel3
-          zip -r9 ../SM-T733_Kernel_${{ env.BUILD_TIME }}.zip * \
+          zip -r9 ../SM-T733_KernelSU-Next_${{ env.BUILD_TIME }}.zip * \
             -x "*.git*" -x "README.md" -x "LICENSE"
 
       - name: Upload kernel zip
         uses: actions/upload-artifact@v4
         with:
-          name: SM-T733_Kernel_${{ env.BUILD_TIME }}
-          path: SM-T733_Kernel_*.zip
+          name: SM-T733_KernelSU-Next_${{ env.BUILD_TIME }}
+          path: SM-T733_KernelSU-Next_*.zip
           retention-days: 7
 
       - name: Upload build log
