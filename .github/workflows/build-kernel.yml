@@ -40,10 +40,16 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           echo "✅ KernelSU-Next 패치 완료"
           ls drivers/kernelsu/ || true
-          find drivers/kernelsu -name "*.c" -o -name "*.h" | \
-            xargs grep -l "linux/pgtable.h" 2>/dev/null | \
-            xargs sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' 2>/dev/null || true
-          echo "✅ pgtable.h 경로 패치 완료"
+
+      - name: Patch KernelSU-Next for Linux 5.4
+        run: |
+          # pgtable.h 경로 패치 (5.4에서 위치 다름)
+          grep -rl "linux/pgtable.h" drivers/kernelsu/ 2>/dev/null | while read f; do
+            echo "Patching: $f"
+            sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' "$f"
+          done
+          # 패치 확인
+          grep -r "pgtable.h" drivers/kernelsu/ || true
 
       - name: Fix samsung debug __init mismatches
         run: |
