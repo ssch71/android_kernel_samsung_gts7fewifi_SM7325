@@ -45,9 +45,22 @@ jobs:
         run: |
           # pgtable.h 경로 패치
           grep -rl "linux/pgtable.h" drivers/kernelsu/ 2>/dev/null | while read f; do
-            echo "Patching pgtable: $f"
             sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' "$f"
           done
+
+          # seccomp_cache 관련 파일 전체 검색 후 Makefile에서 제거
+          find drivers/kernelsu -name "Makefile" | xargs grep -l "seccomp" 2>/dev/null | while read f; do
+            echo "Removing seccomp from: $f"
+            sed -i '/seccomp/d' "$f"
+          done
+
+          # 혹시 남아있으면 stub
+          find drivers/kernelsu -name "seccomp*.c" | while read f; do
+            echo "/* disabled */" > "$f"
+          done
+
+          echo "✅ 5.4 호환 패치 완료"
+          find drivers/kernelsu -name "Makefile" | xargs grep "seccomp" 2>/dev/null || echo "seccomp 제거 확인됨"
 
           # seccomp_cache.c - Makefile에서 제거
           if [ -f drivers/kernelsu/infra/Makefile ]; then
