@@ -76,15 +76,6 @@ jobs:
             echo "/* disabled for 5.4 */" > "$f"
           done
 
-          echo "✅ 5.4 호환 패치 완료"
-
-      - name: Fix samsung debug __init mismatches
-        run: |
-          for f in drivers/samsung/debug/*.c; do
-            sed -i 's/__init //g' "$f"
-            sed -i 's/ __init / /g' "$f"
-          done
-
       - name: Stub missing netfilter source files
         run: |
           MISSING_XT="xt_DSCP xt_hl xt_TCPMSS xt_connmark xt_mark \
