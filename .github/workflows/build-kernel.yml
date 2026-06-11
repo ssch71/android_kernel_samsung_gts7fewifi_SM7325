@@ -1,191 +1,32 @@
-name: Build SM-T733 Kernel with KernelSU-Next
+name: Kernel Build
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout kernel source
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install dependencies
+      - name: "Set up build environment"
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            bc bison flex libssl-dev libelf-dev \
-            python3 python2 make gcc \
-            zip curl git ccache \
-            lz4 binutils-aarch64-linux-gnu \
-            gcc-aarch64-linux-gnu \
-            clang-11 lld-11 llvm-11 \
-            device-tree-compiler
+          sudo apt-get install -y git-core flex bison build-essential zip curl \
+          zlib1g-dev libc6-dev-i386 lib32z1-dev unzip
 
-      - name: Fix all file permissions
-        run: |
-          find scripts -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} \;
-          chmod +x scripts/config
-          find arch -type f -name "*.sh" -exec chmod +x {} \;
-          find tools -type f ! -name "*.c" ! -name "*.h" ! -name "*.mk" \
-            ! -name "Makefile" ! -name "*.txt" -exec chmod +x {} \;
+      - name: "Import kernel source"
+        uses: actions/checkout@v4    
 
-      - name: Setup KernelSU-Next
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          echo "KernelSU-Next next patched"
-          ls drivers/kernelsu/ || true
+      - name: "Setting permission"
+        run: chmod +x build.sh
 
-      - name: Patch KernelSU-Next for Linux 5.4
-        run: |
-          grep -rl "linux/pgtable.h" drivers/kernelsu/ 2>/dev/null | xargs -I{} sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' {}
-          printf '// disabled for 5.4\n#include <linux/kernel.h>\nvoid ksu_enable_seccomp_cache(void) {}\nvoid ksu_disable_seccomp_cache(void) {}\n' > drivers/kernelsu/infra/seccomp_cache.c
-          echo "Patch done"
-          cat drivers/kernelsu/infra/seccomp_cache.c
+      - name: "Build for specific device"
+        run: ./build.sh
 
-      - name: Fix samsung debug __init mismatches
-        run: |
-          for f in drivers/samsung/debug/*.c; do
-            sed -i 's/__init //g' "$f"
-            sed -i 's/ __init / /g' "$f"
-          done
-
-      - name: Stub missing netfilter source files
-        run: |
-          MISSING_XT="xt_DSCP xt_hl xt_TCPMSS xt_connmark xt_mark \
-            xt_MARK xt_conntrack xt_state xt_statistic xt_string \
-            xt_tcpudp xt_iprange xt_multiport xt_limit xt_recent \
-            xt_owner xt_physdev xt_pkttype xt_quota xt_rateest \
-            xt_realm xt_sctp xt_socket xt_time xt_u32 xt_nat \
-            xt_CONNMARK xt_CT xt_LOG xt_NFLOG xt_NFQUEUE \
-            xt_REDIRECT xt_MASQUERADE xt_NETMAP xt_TRACE"
-          for xt in $MISSING_XT; do
-            if [ ! -f net/netfilter/${xt}.c ]; then
-              echo "/* stub */" > net/netfilter/${xt}.c
-            fi
-          done
-
-      - name: Set build variables
-        run: |
-          echo "BUILD_TIME=$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
-
-      - name: Make output directory
-        run: mkdir -p out
-
-      - name: Build defconfig
-        run: |
-          make -C $(pwd) O=$(pwd)/out \
-            ARCH=arm64 \
-            CC=clang-11 \
-            LD=ld.lld-11 \
-            AR=llvm-ar-11 \
-            NM=llvm-nm-11 \
-            OBJCOPY=llvm-objcopy-11 \
-            OBJDUMP=llvm-objdump-11 \
-            STRIP=llvm-strip-11 \
-            LLVM_IAS=1 \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            DTC_EXT=$(pwd)/tools/dtc \
-            CONFIG_BUILD_ARM64_DT_OVERLAY=y \
-            vendor/gts7fewifi_eur_open_defconfig
-
-      - name: Apply config patches
-        run: |
-          ./scripts/config --file out/.config \
-            --enable CONFIG_SECURITY_SELINUX_BOOTPARAM \
-            --set-val CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE 0 \
-            --enable CONFIG_KSU \
-            --enable CONFIG_KPROBES \
-            --enable CONFIG_HAVE_KPROBES \
-            --enable CONFIG_KPROBE_EVENTS
-          grep "^CONFIG_NETFILTER_XT" out/.config | \
-            sed 's/=.*//' | \
-            xargs -I{} ./scripts/config --file out/.config --disable {}
-          make -C $(pwd) O=$(pwd)/out \
-            ARCH=arm64 CC=clang-11 olddefconfig
-
-      - name: Build kernel
-        run: |
-          make -C $(pwd) O=$(pwd)/out \
-            ARCH=arm64 \
-            CC=clang-11 \
-            LD=ld.lld-11 \
-            AR=llvm-ar-11 \
-            NM=llvm-nm-11 \
-            OBJCOPY=llvm-objcopy-11 \
-            OBJDUMP=llvm-objdump-11 \
-            STRIP=llvm-strip-11 \
-            LLVM_IAS=1 \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            DTC_EXT=$(pwd)/tools/dtc \
-            CONFIG_BUILD_ARM64_DT_OVERLAY=y \
-            KCFLAGS="-Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-unused-function" \
-            -j$(nproc --all) 2>&1 | tee build.log
-
-      - name: Check build output
-        run: |
-          if [ ! -f out/arch/arm64/boot/Image ]; then
-            echo "Build failed"
-            grep "error:\|FATAL\|No rule" build.log \
-              | grep -v "HDRINST\|can/error" | sort -u | tail -30
-            exit 1
-          fi
-          echo "Build success"
-          ls -lh out/arch/arm64/boot/
-
-      - name: Extract stock DTB from boot.img
-        run: |
-          wget -q https://github.com/topjohnwu/Magisk/releases/download/v30.0/Magisk-v30.0.apk \
-            -O magisk.zip
-          unzip -q magisk.zip lib/x86_64/libmagiskboot.so -d magisk_tmp
-          cp magisk_tmp/lib/x86_64/libmagiskboot.so magiskboot
-          chmod +x magiskboot
-          mkdir stock_boot
-          cp boot.img stock_boot/
-          cd stock_boot
-          ../magiskboot unpack boot.img
-          if [ -f dtb ]; then
-            cp dtb ../stock_dtb
-            echo "Stock DTB extracted"
-          fi
-
-      - name: Clone AnyKernel3
-        run: |
-          git clone --depth=1 https://github.com/ssch71/AnyKernel3 AnyKernel3
-
-      - name: Package kernel zip
-        run: |
-          cp out/arch/arm64/boot/Image AnyKernel3/
-          if [ -f stock_dtb ]; then
-            cp stock_dtb AnyKernel3/dtb
-          elif [ -f out/arch/arm64/boot/dtb.img ]; then
-            cp out/arch/arm64/boot/dtb.img AnyKernel3/
-          fi
-          if [ -f out/arch/arm64/boot/dtbo.img ]; then
-            cp out/arch/arm64/boot/dtbo.img AnyKernel3/
-          fi
-          cd AnyKernel3
-          zip -r9 ../SM-T733_KernelSU-Next_${{ env.BUILD_TIME }}.zip * \
-            -x "*.git*" -x "README.md" -x "LICENSE"
-
-      - name: Upload kernel zip
+      - name: Upload KernelSU Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SM-T733_KernelSU-Next_${{ env.BUILD_TIME }}
-          path: SM-T733_KernelSU-Next_*.zip
-          retention-days: 7
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-          retention-days: 3
+          name: "crdroid_A15_KSUN"
+          path: |
+            ./prebuilts/output/*
+          if-no-files-found: ignore  
