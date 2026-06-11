@@ -14,14 +14,18 @@ jobs:
           sudo apt-get install -y git-core flex bison build-essential zip curl \
           zlib1g-dev libc6-dev-i386 lib32z1-dev unzip
 
-      - name: "Import kernel source"
+      -       - name: "Import kernel source"
         uses: actions/checkout@v4    
 
       - name: "Setting permission"
+        # build.sh가 있는 하위 폴더명을 지정합니다 (예: Kernel)
+        working-directory: ./Kernel  
         run: chmod +x build.sh
 
       - name: "Build for specific device"
+        working-directory: ./Kernel
         run: ./build.sh
+
 
       - name: Upload KernelSU Artifacts
         uses: actions/upload-artifact@v4
